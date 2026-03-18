@@ -1517,6 +1517,12 @@ func newJSONMarshaler(
 			protoencoding.JSONMarshalerWithUseEnumNumbers(),
 		)
 	}
+	if messageRef.BytesAsText() {
+		jsonMarshalerOptions = append(
+			jsonMarshalerOptions,
+			protoencoding.JSONMarshalerWithBytesAsText(),
+		)
+	}
 	return protoencoding.NewJSONMarshaler(resolver, jsonMarshalerOptions...)
 }
 

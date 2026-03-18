@@ -47,6 +47,7 @@ func newRefParser(logger *slog.Logger) *refParser {
 				formatJSON,
 				internal.WithSingleCustomOptionKey(useProtoNamesKey),
 				internal.WithSingleCustomOptionKey(useEnumNumbersKey),
+				internal.WithSingleCustomOptionKey(bytesAsTextKey),
 			),
 			internal.WithSingleFormat(formatTxtpb),
 			internal.WithSingleFormat(
@@ -105,6 +106,7 @@ func newMessageRefParser(logger *slog.Logger, options ...MessageRefParserOption)
 				formatJSON,
 				internal.WithSingleCustomOptionKey(useProtoNamesKey),
 				internal.WithSingleCustomOptionKey(useEnumNumbersKey),
+				internal.WithSingleCustomOptionKey(bytesAsTextKey),
 			),
 			internal.WithSingleFormat(formatTxtpb),
 			internal.WithSingleFormat(

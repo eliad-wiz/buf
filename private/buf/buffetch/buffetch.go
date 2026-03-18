@@ -45,6 +45,7 @@ const (
 
 	useProtoNamesKey  = "use_proto_names"
 	useEnumNumbersKey = "use_enum_numbers"
+	bytesAsTextKey    = "bytes_as_text"
 )
 
 var (
@@ -106,6 +107,8 @@ type MessageRef interface {
 	UseProtoNames() bool
 	// UseEnumNumbers only applies for MessageEncodingYAML at this time.
 	UseEnumNumbers() bool
+	// BytesAsText only applies for MessageEncodingJSON.
+	BytesAsText() bool
 	IsNull() bool
 	internalSingleRef() internal.SingleRef
 }

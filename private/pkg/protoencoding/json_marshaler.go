@@ -27,6 +27,7 @@ type jsonMarshaler struct {
 	useProtoNames   bool
 	useEnumNumbers  bool
 	emitUnpopulated bool
+	bytesAsText     bool
 }
 
 func newJSONMarshaler(resolver Resolver, options ...JSONMarshalerOption) Marshaler {
@@ -56,6 +57,12 @@ func (m *jsonMarshaler) Marshal(message proto.Message) ([]byte, error) {
 	data, err := options.Marshal(message)
 	if err != nil {
 		return nil, fmt.Errorf("json marshal: %w", err)
+	}
+	if m.bytesAsText {
+		data, err = transformBytesAsText(data, message.ProtoReflect().Descriptor(), m.useProtoNames)
+		if err != nil {
+			return nil, fmt.Errorf("bytes_as_text transform: %w", err)
+		}
 	}
 	return data, err
 }

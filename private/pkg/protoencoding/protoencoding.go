@@ -113,6 +113,14 @@ func JSONMarshalerWithEmitUnpopulated() JSONMarshalerOption {
 	}
 }
 
+// JSONMarshalerWithBytesAsText says to render bytes fields as UTF-8 text strings.
+// If a bytes value is not valid UTF-8, it falls back to "base64:<base64_value>".
+func JSONMarshalerWithBytesAsText() JSONMarshalerOption {
+	return func(jsonMarshaler *jsonMarshaler) {
+		jsonMarshaler.bytesAsText = true
+	}
+}
+
 // NewTxtpbMarshaler returns a new Marshaler for txtpb.
 //
 // If the resolver is nil, EmptyResolver will be used.
