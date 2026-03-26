@@ -42,6 +42,7 @@ const (
 	toFlagName              = "to"
 	validateFlagName        = "validate"
 	disableSymlinksFlagName = "disable-symlinks"
+	repeatingFlagName       = "repeating"
 )
 
 // NewCommand returns a new Command.
@@ -101,6 +102,7 @@ type flags struct {
 	To              string
 	Validate        bool
 	DisableSymlinks bool
+	Repeating       bool
 
 	// special
 	InputHashtag string
@@ -154,6 +156,12 @@ func (f *flags) Bind(flagSet *pflag.FlagSet) {
 			`Validate the message specified with --%s by applying protovalidate rules to it. See https://github.com/bufbuild/protovalidate for more details.`,
 			fromFlagName,
 		),
+	)
+	flagSet.BoolVar(
+		&f.Repeating,
+		repeatingFlagName,
+		false,
+		`Read the input as multiple length-delimited binary messages and output them as an array. The input format must be binary (binpb). For JSON output, messages are written as a JSON array. For YAML, messages are separated by "---". For text format, messages are newline-separated. For binary output, messages are written in length-delimited format.`,
 	)
 }
 
@@ -218,6 +226,33 @@ func run(
 	var fromFunctionOptions []bufctl.FunctionOption
 	if flags.Validate {
 		fromFunctionOptions = append(fromFunctionOptions, bufctl.WithMessageValidation())
+	}
+	if flags.Repeating {
+		fromMessages, fromMessageEncoding, err := controller.GetMessages(
+			ctx,
+			schemaImage,
+			flags.From,
+			flags.Type,
+			buffetch.MessageEncodingBinpb,
+			fromFunctionOptions...,
+		)
+		if err != nil {
+			return fmt.Errorf("--%s: %w", fromFlagName, err)
+		}
+		defaultToMessageEncoding, err := inverseEncoding(fromMessageEncoding)
+		if err != nil {
+			return err
+		}
+		if err := controller.PutMessages(
+			ctx,
+			schemaImage,
+			flags.To,
+			fromMessages,
+			defaultToMessageEncoding,
+		); err != nil {
+			return fmt.Errorf("--%s: %w", toFlagName, err)
+		}
+		return nil
 	}
 	fromMessage, fromMessageEncoding, err := controller.GetMessage(
 		ctx,

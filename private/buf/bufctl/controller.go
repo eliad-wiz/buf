@@ -145,6 +145,31 @@ type Controller interface {
 		defaultMessageEncoding buffetch.MessageEncoding,
 		options ...FunctionOption,
 	) error
+	// GetMessages reads multiple length-delimited messages from the input.
+	//
+	// The input must be in binary (binpb) format with each message preceded
+	// by a varint length prefix.
+	GetMessages(
+		ctx context.Context,
+		schemaImage bufimage.Image,
+		messageInput string,
+		typeName string,
+		defaultMessageEncoding buffetch.MessageEncoding,
+		options ...FunctionOption,
+	) ([]proto.Message, buffetch.MessageEncoding, error)
+	// PutMessages writes multiple messages to the output.
+	//
+	// For JSON output, messages are written as a JSON array.
+	// For binary output, messages are written in length-delimited format.
+	// For text/YAML output, messages are written separated by newlines.
+	PutMessages(
+		ctx context.Context,
+		schemaImage bufimage.Image,
+		messageOutput string,
+		messages []proto.Message,
+		defaultMessageEncoding buffetch.MessageEncoding,
+		options ...FunctionOption,
+	) error
 	// GetCheckClientForWorkspace returns a new bufcheck Client for the given Workspace.
 	//
 	// Clients are bound to a specific Workspace to ensure that the correct
@@ -844,6 +869,199 @@ func (c *controller) PutMessage(
 	}
 	_, err = writeCloser.Write(data)
 	return errors.Join(err, writeCloser.Close())
+}
+
+func (c *controller) GetMessages(
+	ctx context.Context,
+	schemaImage bufimage.Image,
+	messageInput string,
+	typeName string,
+	defaultMessageEncoding buffetch.MessageEncoding,
+	options ...FunctionOption,
+) (_ []proto.Message, _ buffetch.MessageEncoding, retErr error) {
+	defer c.handleFileAnnotationSetRetError(&retErr)
+	functionOptions := newFunctionOptions(c)
+	for _, option := range options {
+		option(functionOptions)
+	}
+	messageRefParser := buffetch.NewMessageRefParser(
+		c.logger,
+		buffetch.MessageRefParserWithDefaultMessageEncoding(
+			defaultMessageEncoding,
+		),
+	)
+	messageRef, err := messageRefParser.GetMessageRef(ctx, messageInput)
+	if err != nil {
+		return nil, 0, err
+	}
+	messageEncoding := messageRef.MessageEncoding()
+	if messageRef.IsNull() {
+		return nil, messageEncoding, nil
+	}
+	if messageEncoding != buffetch.MessageEncodingBinpb {
+		return nil, 0, fmt.Errorf("repeating mode only supports binary (binpb) input format")
+	}
+	readCloser, err := c.buffetchReader.GetMessageFile(ctx, c.container, messageRef)
+	if err != nil {
+		return nil, 0, err
+	}
+	data, err := xio.ReadAllAndClose(readCloser)
+	if err != nil {
+		return nil, 0, err
+	}
+	newMessage := func() proto.Message {
+		message, _ := bufreflect.NewMessage(ctx, schemaImage, typeName)
+		return message
+	}
+	// Validate we can create at least one message of this type.
+	if _, err := bufreflect.NewMessage(ctx, schemaImage, typeName); err != nil {
+		return nil, 0, err
+	}
+	messages, err := protoencoding.UnmarshalLengthDelimitedAll(data, schemaImage.Resolver(), newMessage)
+	if err != nil {
+		return nil, 0, err
+	}
+	if functionOptions.messageValidation {
+		protovalidateValidator, err := protovalidate.New(
+			protovalidate.WithExtensionTypeResolver(schemaImage.Resolver()),
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i, message := range messages {
+			if err := protovalidateValidator.Validate(message); err != nil {
+				return nil, 0, fmt.Errorf("validation failed for message %d: %w", i, err)
+			}
+		}
+	}
+	return messages, messageEncoding, nil
+}
+
+func (c *controller) PutMessages(
+	ctx context.Context,
+	schemaImage bufimage.Image,
+	messageOutput string,
+	messages []proto.Message,
+	defaultMessageEncoding buffetch.MessageEncoding,
+	options ...FunctionOption,
+) (retErr error) {
+	defer c.handleFileAnnotationSetRetError(&retErr)
+	functionOptions := newFunctionOptions(c)
+	for _, option := range options {
+		option(functionOptions)
+	}
+	messageRefParser := buffetch.NewMessageRefParser(
+		c.logger,
+		buffetch.MessageRefParserWithDefaultMessageEncoding(
+			defaultMessageEncoding,
+		),
+	)
+	messageRef, err := messageRefParser.GetMessageRef(ctx, messageOutput)
+	if err != nil {
+		return err
+	}
+	if messageRef.IsNull() {
+		return nil
+	}
+	var data []byte
+	switch messageRef.MessageEncoding() {
+	case buffetch.MessageEncodingBinpb:
+		data, err = protoencoding.MarshalLengthDelimitedAll(messages)
+		if err != nil {
+			return err
+		}
+	case buffetch.MessageEncodingJSON, buffetch.MessageEncodingTxtpb, buffetch.MessageEncodingYAML:
+		marshaler, err := newProtoencodingMarshaler(schemaImage, messageRef)
+		if err != nil {
+			return err
+		}
+		data, err = marshalRepeatingMessages(marshaler, messages, messageRef.MessageEncoding())
+		if err != nil {
+			return err
+		}
+	default:
+		return syserror.Newf("unknown MessageEncoding: %v", messageRef.MessageEncoding())
+	}
+	writeCloser, err := c.buffetchWriter.PutMessageFile(ctx, c.container, messageRef)
+	if err != nil {
+		return err
+	}
+	_, err = writeCloser.Write(data)
+	return errors.Join(err, writeCloser.Close())
+}
+
+// marshalRepeatingMessages marshals multiple messages into a single output
+// appropriate for the given encoding format.
+func marshalRepeatingMessages(
+	marshaler protoencoding.Marshaler,
+	messages []proto.Message,
+	encoding buffetch.MessageEncoding,
+) ([]byte, error) {
+	marshaledMessages := make([][]byte, len(messages))
+	for i, message := range messages {
+		data, err := marshaler.Marshal(message)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal message %d: %w", i, err)
+		}
+		marshaledMessages[i] = data
+	}
+	switch encoding {
+	case buffetch.MessageEncodingJSON:
+		return joinJSON(marshaledMessages), nil
+	case buffetch.MessageEncodingTxtpb:
+		return joinWithSeparator(marshaledMessages, []byte("\n")), nil
+	case buffetch.MessageEncodingYAML:
+		return joinWithSeparator(marshaledMessages, []byte("---\n")), nil
+	default:
+		return nil, syserror.Newf("unsupported repeating encoding: %v", encoding)
+	}
+}
+
+// joinJSON wraps marshaled JSON messages in a JSON array.
+func joinJSON(items [][]byte) []byte {
+	if len(items) == 0 {
+		return []byte("[]")
+	}
+	// Calculate total size for pre-allocation.
+	totalSize := 2 // [ and ]
+	for i, item := range items {
+		totalSize += len(item)
+		if i > 0 {
+			totalSize++ // comma
+		}
+	}
+	result := make([]byte, 0, totalSize)
+	result = append(result, '[')
+	for i, item := range items {
+		if i > 0 {
+			result = append(result, ',')
+		}
+		result = append(result, item...)
+	}
+	result = append(result, ']')
+	return result
+}
+
+// joinWithSeparator joins byte slices with the given separator.
+func joinWithSeparator(items [][]byte, separator []byte) []byte {
+	if len(items) == 0 {
+		return nil
+	}
+	totalSize := 0
+	for i, item := range items {
+		totalSize += len(item)
+		if i > 0 {
+			totalSize += len(separator)
+		}
+	}
+	result := make([]byte, 0, totalSize)
+	for i, item := range items {
+		if i > 0 {
+			result = append(result, separator...)
+		}
+		result = append(result, item...)
+	}
+	return result
 }
 
 func (c *controller) GetCheckClientForWorkspace(

@@ -423,6 +423,79 @@ func TestConvertWKTImport(t *testing.T) {
 	)
 }
 
+func TestConvertRepeatingBinpbToJSON(t *testing.T) {
+	t.Parallel()
+	appcmdtesting.Run(
+		t,
+		testNewCommand,
+		appcmdtesting.WithExpectedExitCode(0),
+		appcmdtesting.WithExpectedStdout(`[{"one":"55"},{"one":"100"},{"one":"200"}]`),
+		appcmdtesting.WithArgs(
+			"--type",
+			"buf.Foo",
+			"--from",
+			"testdata/convert/repeating/payload.binpb",
+			"--to",
+			"-#format=json",
+			"--repeating",
+		),
+	)
+}
+
+func TestConvertRepeatingBinpbToYAML(t *testing.T) {
+	t.Parallel()
+	appcmdtesting.Run(
+		t,
+		testNewCommand,
+		appcmdtesting.WithExpectedExitCode(0),
+		appcmdtesting.WithExpectedStdout("one: \"55\"\n---\none: \"100\"\n---\none: \"200\""),
+		appcmdtesting.WithArgs(
+			"--type",
+			"buf.Foo",
+			"--from",
+			"testdata/convert/repeating/payload.binpb",
+			"--to",
+			"-#format=yaml",
+			"--repeating",
+		),
+	)
+}
+
+func TestConvertRepeatingBinpbToTxtpb(t *testing.T) {
+	t.Parallel()
+	appcmdtesting.Run(
+		t,
+		testNewCommand,
+		appcmdtesting.WithExpectedExitCode(0),
+		appcmdtesting.WithExpectedStdout("one: 55\n\none: 100\n\none: 200"),
+		appcmdtesting.WithArgs(
+			"--type",
+			"buf.Foo",
+			"--from",
+			"testdata/convert/repeating/payload.binpb",
+			"--to",
+			"-#format=txtpb",
+			"--repeating",
+		),
+	)
+}
+
+func TestConvertRepeatingNonBinaryInputFails(t *testing.T) {
+	t.Parallel()
+	appcmdtesting.Run(
+		t,
+		testNewCommand,
+		appcmdtesting.WithExpectedExitCode(1),
+		appcmdtesting.WithArgs(
+			"--type",
+			"buf.Foo",
+			"--from",
+			"testdata/convert/bin_json/payload.json",
+			"--repeating",
+		),
+	)
+}
+
 func testNewCommand(use string) *appcmd.Command {
 	return NewCommand("convert", appext.NewBuilder("convert"))
 }
