@@ -442,6 +442,25 @@ func TestConvertRepeatingBinpbToJSON(t *testing.T) {
 	)
 }
 
+func TestConvertRepeatingBinpbToJSONL(t *testing.T) {
+	t.Parallel()
+	appcmdtesting.Run(
+		t,
+		testNewCommand,
+		appcmdtesting.WithExpectedExitCode(0),
+		appcmdtesting.WithExpectedStdout("{\"one\":\"55\"}\n{\"one\":\"100\"}\n{\"one\":\"200\"}"),
+		appcmdtesting.WithArgs(
+			"--type",
+			"buf.Foo",
+			"--from",
+			"testdata/convert/repeating/payload.binpb",
+			"--to",
+			"-#format=json,jsonl=true",
+			"--repeating",
+		),
+	)
+}
+
 func TestConvertRepeatingBinpbToYAML(t *testing.T) {
 	t.Parallel()
 	appcmdtesting.Run(

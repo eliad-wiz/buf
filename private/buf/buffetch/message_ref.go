@@ -25,6 +25,7 @@ type messageRef struct {
 	useProtoNames   bool
 	useEnumNumbers  bool
 	bytesAsText     bool
+	jsonl           bool
 	messageEncoding MessageEncoding
 }
 
@@ -44,11 +45,16 @@ func newMessageRef(
 	if err != nil {
 		return nil, err
 	}
+	jsonl, err := getTrueOrFalseForSingleRef(singleRef, jsonlKey)
+	if err != nil {
+		return nil, err
+	}
 	return &messageRef{
 		singleRef:       singleRef,
 		useProtoNames:   useProtoNames,
 		useEnumNumbers:  useEnumNumbers,
 		bytesAsText:     bytesAsText,
+		jsonl:           jsonl,
 		messageEncoding: messageEncoding,
 	}, nil
 }
@@ -71,6 +77,10 @@ func (r *messageRef) UseEnumNumbers() bool {
 
 func (r *messageRef) BytesAsText() bool {
 	return r.bytesAsText
+}
+
+func (r *messageRef) JSONL() bool {
+	return r.jsonl
 }
 
 func (r *messageRef) IsNull() bool {

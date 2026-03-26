@@ -46,6 +46,7 @@ const (
 	useProtoNamesKey  = "use_proto_names"
 	useEnumNumbersKey = "use_enum_numbers"
 	bytesAsTextKey    = "bytes_as_text"
+	jsonlKey          = "jsonl"
 )
 
 var (
@@ -109,6 +110,10 @@ type MessageRef interface {
 	UseEnumNumbers() bool
 	// BytesAsText only applies for MessageEncodingJSON.
 	BytesAsText() bool
+	// JSONL only applies for MessageEncodingJSON with repeating mode.
+	// When true, repeating messages are output as JSON Lines (one JSON object per line)
+	// instead of a JSON array.
+	JSONL() bool
 	IsNull() bool
 	internalSingleRef() internal.SingleRef
 }

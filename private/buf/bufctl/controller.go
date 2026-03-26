@@ -975,7 +975,7 @@ func (c *controller) PutMessages(
 		if err != nil {
 			return err
 		}
-		data, err = marshalRepeatingMessages(marshaler, messages, messageRef.MessageEncoding())
+		data, err = marshalRepeatingMessages(marshaler, messages, messageRef.MessageEncoding(), messageRef.JSONL())
 		if err != nil {
 			return err
 		}
@@ -996,6 +996,7 @@ func marshalRepeatingMessages(
 	marshaler protoencoding.Marshaler,
 	messages []proto.Message,
 	encoding buffetch.MessageEncoding,
+	jsonl bool,
 ) ([]byte, error) {
 	marshaledMessages := make([][]byte, len(messages))
 	for i, message := range messages {
@@ -1007,6 +1008,9 @@ func marshalRepeatingMessages(
 	}
 	switch encoding {
 	case buffetch.MessageEncodingJSON:
+		if jsonl {
+			return joinWithSeparator(marshaledMessages, []byte("\n")), nil
+		}
 		return joinJSON(marshaledMessages), nil
 	case buffetch.MessageEncodingTxtpb:
 		return joinWithSeparator(marshaledMessages, []byte("\n")), nil
